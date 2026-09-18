@@ -1,7 +1,12 @@
---//====================================================//
---//                  LUNAR SNAKE                      //
---//                    PART 1/3                       //
---//====================================================//
+--========================================
+-- LUNAR SNAKE
+-- PART 1/3
+-- CORE / UI / HOME / GAME BOARD
+--========================================
+
+--========================================
+-- SERVICES
+--========================================
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -10,767 +15,817 @@ local RunService = game:GetService("RunService")
 
 local Player = Players.LocalPlayer
 
---//====================================================//
---//                     CONFIG                         //
---//====================================================//
+--========================================
+-- PERSISTENT DATA
+--========================================
 
-local Config = {
-    Width = 18,
-    Height = 14,
-    CellSize = 24,
-
-    GameSpeed = 0.13,
-
-    Background = Color3.fromRGB(7, 7, 14),
-    Panel = Color3.fromRGB(13, 13, 25),
-    Panel2 = Color3.fromRGB(20, 18, 35),
-
-    Accent = Color3.fromRGB(145, 65, 255),
-    Accent2 = Color3.fromRGB(190, 100, 255),
-
-    Text = Color3.fromRGB(245, 245, 255),
-    Muted = Color3.fromRGB(145, 140, 165),
-
-    Snake = Color3.fromRGB(170, 75, 255),
-    SnakeHead = Color3.fromRGB(205, 120, 255),
-    Food = Color3.fromRGB(255, 75, 120)
+getgenv().LunarSnakeData = getgenv().LunarSnakeData or {
+    BestScore = 0,
+    Score = 0,
+    Snake = nil,
+    Food = nil,
+    Direction = "Right",
+    Running = false,
+    Paused = false
 }
 
---//====================================================//
---//                     HELPERS                        //
---//====================================================//
+local Save = getgenv().LunarSnakeData
 
-local function New(Class, Parent, Properties)
-    local Object = Instance.new(Class)
+--========================================
+-- CONFIG
+--========================================
 
-    for Property, Value in pairs(Properties or {}) do
-        pcall(function()
-            Object[Property] = Value
-        end)
+local CONFIG = {
+    Width = 18,
+    Height = 14,
+
+    CellSize = 22,
+
+    -- Slower than the previous version
+    GameSpeed = 0.22,
+
+    Background = Color3.fromRGB(8, 7, 15),
+    Panel = Color3.fromRGB(15, 13, 25),
+    Panel2 = Color3.fromRGB(20, 17, 33),
+
+    Purple = Color3.fromRGB(142, 82, 255),
+    PurpleDark = Color3.fromRGB(76, 42, 135),
+
+    Text = Color3.fromRGB(240, 236, 255),
+    Muted = Color3.fromRGB(155, 148, 180),
+
+    Snake = Color3.fromRGB(164, 94, 255),
+    SnakeHead = Color3.fromRGB(202, 156, 255),
+    Food = Color3.fromRGB(255, 92, 166)
+}
+
+--========================================
+-- HELPERS
+--========================================
+
+local function New(className, properties, parent)
+    local object = Instance.new(className)
+
+    for property, value in pairs(properties or {}) do
+        object[property] = value
     end
 
-    Object.Parent = Parent
-
-    return Object
+    object.Parent = parent
+    return object
 end
 
-local function Corner(Parent, Radius)
-    return New("UICorner", Parent, {
-        CornerRadius = UDim.new(0, Radius or 10)
-    })
+local function Corner(parent, radius)
+    return New("UICorner", {
+        CornerRadius = UDim.new(0, radius or 10)
+    }, parent)
 end
 
-local function Stroke(Parent, Color, Thickness)
-    return New("UIStroke", Parent, {
-        Color = Color or Config.Accent,
-        Thickness = Thickness or 1,
-        Transparency = 0.2
-    })
+local function Stroke(parent, color, thickness, transparency)
+    return New("UIStroke", {
+        Color = color or CONFIG.Purple,
+        Thickness = thickness or 1,
+        Transparency = transparency or 0
+    }, parent)
 end
 
-local function Tween(Object, Time, Properties)
-    if not Object then
-        return
-    end
-
-    local Animation = TweenService:Create(
-        Object,
-        TweenInfo.new(
-            Time or 0.25,
-            Enum.EasingStyle.Quint,
-            Enum.EasingDirection.Out
-        ),
-        Properties
+local function Tween(object, time, properties, style, direction)
+    local info = TweenInfo.new(
+        time,
+        style or Enum.EasingStyle.Quart,
+        direction or Enum.EasingDirection.Out
     )
 
-    Animation:Play()
+    local tween = TweenService:Create(object, info, properties)
+    tween:Play()
 
-    return Animation
+    return tween
 end
 
-local function Label(Parent, Text, Size, Position, TextSize, Color)
-    return New("TextLabel", Parent, {
-        Size = Size,
-        Position = Position,
-
+local function Label(parent, text, size, position, font, textSize)
+    return New("TextLabel", {
         BackgroundTransparency = 1,
-
-        Text = Text,
-        TextColor3 = Color or Config.Text,
-        TextSize = TextSize or 14,
-
-        Font = Enum.Font.GothamSemibold,
-
+        Text = text,
+        Size = size,
+        Position = position,
+        Font = font or Enum.Font.Gotham,
+        TextSize = textSize or 14,
+        TextColor3 = CONFIG.Text,
         TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Center,
-
-        ZIndex = 20
-    })
+        TextYAlignment = Enum.TextYAlignment.Center
+    }, parent)
 end
 
---//====================================================//
---//                    SCREEN GUI                     //
---//====================================================//
+--========================================
+-- REMOVE OLD MENU
+--========================================
 
-local Old = game:GetService("CoreGui"):FindFirstChild("LunarSnake")
+local old = game:GetService("CoreGui"):FindFirstChild("LunarSnake")
 
-if Old then
-    Old:Destroy()
+if old then
+    old:Destroy()
 end
 
-local Gui = New("ScreenGui", game:GetService("CoreGui"), {
+--========================================
+-- SCREEN GUI
+--========================================
+
+local Gui = New("ScreenGui", {
     Name = "LunarSnake",
-
     ResetOnSpawn = false,
     IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+}, game:GetService("CoreGui"))
 
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+--========================================
+-- MAIN HOLDER
+--========================================
 
-    DisplayOrder = 999999
-})
-
---//====================================================//
---//                    MAIN HOLDER                    //
---//====================================================//
-
-local Holder = New("Frame", Gui, {
+local Holder = New("Frame", {
+    Name = "Holder",
     Size = UDim2.fromOffset(570, 470),
-
-    Position = UDim2.new(
-        0.5,
-        -285,
-        0.5,
-        -235
-    ),
-
-    BackgroundColor3 = Config.Background,
-
+    Position = UDim2.new(0.5, -285, 0.5, -235),
+    BackgroundColor3 = CONFIG.Background,
     BorderSizePixel = 0,
-
-    ZIndex = 1
-})
+    ClipsDescendants = true,
+    Active = true
+}, Gui)
 
 Corner(Holder, 18)
-Stroke(Holder, Config.Accent, 1)
+Stroke(Holder, CONFIG.PurpleDark, 1, 0.25)
 
---//====================================================//
---//                    BACKGROUND                     //
---//====================================================//
+--========================================
+-- ANIMATED BACKGROUND
+--========================================
 
-local Background = New("Frame", Holder, {
+local Background = New("Frame", {
+    Name = "Background",
     Size = UDim2.fromScale(1, 1),
-
-    BackgroundColor3 = Config.Background,
-
-    BorderSizePixel = 0,
-
+    Position = UDim2.fromScale(0, 0),
+    BackgroundTransparency = 1,
     ClipsDescendants = true,
-
-    ZIndex = 1
-})
-
-Corner(Background, 18)
-
--- Purple glow lines
+    ZIndex = 0
+}, Holder)
 
 for i = 1, 7 do
-    local Line = New("Frame", Background, {
-        Size = UDim2.fromOffset(3, 650),
-
-        Position = UDim2.new(
-            -0.15 + (i * 0.18),
-            0,
-            -0.25,
-            0
-        ),
-
+    local line = New("Frame", {
+        Size = UDim2.fromOffset(2, 700),
+        Position = UDim2.new(-0.2 + i * 0.18, 0, -0.4, 0),
         Rotation = 25,
-
-        BackgroundColor3 = Config.Accent,
-
-        BackgroundTransparency = 0.91,
-
+        BackgroundColor3 = CONFIG.Purple,
+        BackgroundTransparency = 0.94,
         BorderSizePixel = 0,
-
-        ZIndex = 2
-    })
+        ZIndex = 0
+    }, Background)
 
     task.spawn(function()
-        local Start = Line.Position.X.Scale
+        while line.Parent do
+            local start = line.Position
 
-        while Line.Parent do
-            local Offset = math.sin(os.clock() * 0.7 + i) * 0.06
+            Tween(
+                line,
+                4 + i * 0.35,
+                {
+                    Position = UDim2.new(
+                        start.X.Scale + 0.22,
+                        start.X.Offset,
+                        start.Y.Scale,
+                        start.Y.Offset
+                    )
+                },
+                Enum.EasingStyle.Linear
+            ).Completed:Wait()
 
-            Line.Position = UDim2.new(
-                Start + Offset,
+            line.Position = UDim2.new(
+                -0.35 + i * 0.18,
                 0,
-                -0.25,
+                -0.4,
                 0
             )
-
-            task.wait(0.03)
         end
     end)
 end
 
---//====================================================//
---//                      TOP BAR                     //
---//====================================================//
+--========================================
+-- TOP BAR
+--========================================
 
-local TopBar = New("Frame", Holder, {
-    Size = UDim2.new(1, -16, 0, 58),
-
-    Position = UDim2.fromOffset(8, 8),
-
-    BackgroundColor3 = Config.Panel,
-
-    BorderSizePixel = 0,
-
+local TopBar = New("Frame", {
+    Name = "TopBar",
+    Size = UDim2.new(1, -28, 0, 64),
+    Position = UDim2.fromOffset(14, 10),
+    BackgroundTransparency = 1,
     ZIndex = 10
-})
+}, Holder)
 
-Corner(TopBar, 13)
-Stroke(TopBar, Config.Accent, 1)
+--========================================
+-- LUNAR LOGO
+--========================================
 
--- Moon logo
-
-local Logo = New("TextLabel", TopBar, {
+local LogoHolder = New("Frame", {
     Size = UDim2.fromOffset(42, 42),
+    Position = UDim2.fromOffset(0, 8),
+    BackgroundColor3 = CONFIG.Panel2,
+    BorderSizePixel = 0
+}, TopBar)
 
-    Position = UDim2.fromOffset(8, 8),
+Corner(LogoHolder, 12)
+Stroke(LogoHolder, CONFIG.PurpleDark, 1, 0.35)
 
-    BackgroundColor3 = Config.Accent,
+local MoonOuter = New("Frame", {
+    Size = UDim2.fromOffset(23, 23),
+    Position = UDim2.new(0.5, -11, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(191, 157, 255),
+    BorderSizePixel = 0
+}, LogoHolder)
 
-    BackgroundTransparency = 0.1,
+Corner(MoonOuter, 50)
 
-    BorderSizePixel = 0,
+local MoonCut = New("Frame", {
+    Size = UDim2.fromOffset(21, 21),
+    Position = UDim2.fromOffset(8, -2),
+    BackgroundColor3 = CONFIG.Panel2,
+    BorderSizePixel = 0
+}, MoonOuter)
 
-    Text = "☾",
+Corner(MoonCut, 50)
 
-    TextColor3 = Config.Text,
+--========================================
+-- TITLE
+--========================================
 
-    TextSize = 27,
-
-    Font = Enum.Font.GothamBold,
-
-    TextXAlignment = Enum.TextXAlignment.Center,
-
-    TextYAlignment = Enum.TextYAlignment.Center,
-
-    ZIndex = 20
-})
-
-Corner(Logo, 12)
-
--- Title
-
-Label(
+local Title = Label(
     TopBar,
     "LUNAR SNAKE",
-    UDim2.fromOffset(220, 25),
-    UDim2.fromOffset(60, 7),
-    17,
-    Config.Text
+    UDim2.fromOffset(220, 28),
+    UDim2.fromOffset(54, 7),
+    Enum.Font.GothamBold,
+    18
 )
 
-Label(
+local Subtitle = Label(
     TopBar,
     "CLASSIC SNAKE GAME",
     UDim2.fromOffset(220, 20),
-    UDim2.fromOffset(61, 29),
-    10,
-    Config.Muted
+    UDim2.fromOffset(54, 32),
+    Enum.Font.Gotham,
+    10
 )
 
--- Score
+Subtitle.TextColor3 = CONFIG.Muted
 
-local ScoreLabel = Label(
-    TopBar,
-    "SCORE  0",
-    UDim2.fromOffset(110, 40),
-    UDim2.new(1, -230, 0, 9),
-    12,
-    Config.Text
-)
+--========================================
+-- MINIMIZE BUTTON
+--========================================
 
-ScoreLabel.TextXAlignment = Enum.TextXAlignment.Right
-
--- Close
-
-local CloseButton = New("TextButton", TopBar, {
-    Size = UDim2.fromOffset(40, 40),
-
-    Position = UDim2.new(1, -48, 0, 9),
-
-    BackgroundColor3 = Config.Panel2,
-
-    BorderSizePixel = 0,
-
-    Text = "×",
-
-    TextColor3 = Config.Text,
-
-    TextSize = 25,
-
-    Font = Enum.Font.GothamMedium,
-
+local MinimizeButton = New("TextButton", {
+    Size = UDim2.fromOffset(34, 34),
+    Position = UDim2.new(1, -72, 0, 12),
+    BackgroundColor3 = CONFIG.Panel2,
+    Text = "—",
+    TextColor3 = CONFIG.Text,
+    TextSize = 18,
+    Font = Enum.Font.GothamBold,
     AutoButtonColor = false,
-
-    ZIndex = 30
-})
-
-Corner(CloseButton, 11)
-
---//====================================================//
---//                  CONTENT AREA                    //
---//====================================================//
-
-local Content = New("Frame", Holder, {
-    Size = UDim2.new(1, -20, 1, -82),
-
-    Position = UDim2.fromOffset(10, 72),
-
-    BackgroundTransparency = 1,
-
     BorderSizePixel = 0,
+    ZIndex = 20
+}, TopBar)
 
+Corner(MinimizeButton, 10)
+
+--========================================
+-- CLOSE BUTTON
+--========================================
+
+local CloseButton = New("TextButton", {
+    Size = UDim2.fromOffset(34, 34),
+    Position = UDim2.new(1, -34, 0, 12),
+    BackgroundColor3 = CONFIG.Panel2,
+    Text = "×",
+    TextColor3 = CONFIG.Text,
+    TextSize = 20,
+    Font = Enum.Font.GothamBold,
+    AutoButtonColor = false,
+    BorderSizePixel = 0,
+    ZIndex = 20
+}, TopBar)
+
+Corner(CloseButton, 10)
+
+--========================================
+-- CONTENT
+--========================================
+
+local Content = New("Frame", {
+    Name = "Content",
+    Size = UDim2.new(1, -28, 1, -86),
+    Position = UDim2.fromOffset(14, 76),
+    BackgroundTransparency = 1,
+    ClipsDescendants = true,
     ZIndex = 5
-})
+}, Holder)
 
---//====================================================//
---//                   HOME PAGE                      //
---//====================================================//
+--========================================
+-- HOME PAGE
+--========================================
 
-local Home = New("Frame", Content, {
+local Home = New("Frame", {
+    Name = "Home",
     Size = UDim2.fromScale(1, 1),
-
     BackgroundTransparency = 1,
-
-    BorderSizePixel = 0,
-
     ZIndex = 5
-})
+}, Content)
 
--- Game card
+--========================================
+-- HOME CARD
+--========================================
 
-local GameCard = New("Frame", Home, {
-    Size = UDim2.new(1, -20, 0, 180),
-
-    Position = UDim2.fromOffset(10, 10),
-
-    BackgroundColor3 = Config.Panel,
-
+local GameCard = New("Frame", {
+    Size = UDim2.new(1, -20, 0, 215),
+    Position = UDim2.fromOffset(10, 8),
+    BackgroundColor3 = CONFIG.Panel,
     BorderSizePixel = 0,
-
     ZIndex = 6
-})
+}, Home)
 
 Corner(GameCard, 16)
-Stroke(GameCard, Config.Accent, 1)
+Stroke(GameCard, CONFIG.PurpleDark, 1, 0.45)
 
--- Snake icon
+--========================================
+-- SNAKE ICON
+--========================================
 
-local SnakeIcon = Label(
-    GameCard,
-    "🐍",
-    UDim2.fromOffset(110, 100),
-    UDim2.fromOffset(20, 25),
-    70,
-    Config.Text
-)
-
-SnakeIcon.TextXAlignment = Enum.TextXAlignment.Center
-
--- Main title
-
-local MainTitle = Label(
-    GameCard,
-    "LUNAR SNAKE",
-    UDim2.new(1, -170, 0, 42),
-    UDim2.fromOffset(145, 25),
-    25,
-    Config.Text
-)
-
-MainTitle.Font = Enum.Font.GothamBold
-
--- Description
-
-Label(
-    GameCard,
-    "Classic Snake",
-    UDim2.new(1, -170, 0, 25),
-    UDim2.fromOffset(146, 67),
-    12,
-    Config.Muted
-)
-
-Label(
-    GameCard,
-    "Eat the food and grow.",
-    UDim2.new(1, -170, 0, 25),
-    UDim2.fromOffset(146, 90),
-    11,
-    Config.Muted
-)
-
--- Play button
-
-local PlayButton = New("TextButton", GameCard, {
-    Size = UDim2.new(1, -175, 0, 42),
-
-    Position = UDim2.fromOffset(145, 125),
-
-    BackgroundColor3 = Config.Accent,
-
+local SnakeIcon = New("Frame", {
+    Size = UDim2.fromOffset(74, 74),
+    Position = UDim2.fromOffset(24, 24),
+    BackgroundColor3 = CONFIG.Panel2,
     BorderSizePixel = 0,
+    ZIndex = 7
+}, GameCard)
 
-    Text = "▶  PLAY",
+Corner(SnakeIcon, 18)
 
-    TextColor3 = Config.Text,
+local SnakeDot1 = New("Frame", {
+    Size = UDim2.fromOffset(15, 15),
+    Position = UDim2.fromOffset(18, 30),
+    BackgroundColor3 = CONFIG.Snake,
+    BorderSizePixel = 0,
+    ZIndex = 8
+}, SnakeIcon)
 
-    TextSize = 14,
+Corner(SnakeDot1, 50)
 
+local SnakeDot2 = New("Frame", {
+    Size = UDim2.fromOffset(15, 15),
+    Position = UDim2.fromOffset(31, 30),
+    BackgroundColor3 = CONFIG.Snake,
+    BorderSizePixel = 0,
+    ZIndex = 8
+}, SnakeIcon)
+
+Corner(SnakeDot2, 50)
+
+local SnakeDot3 = New("Frame", {
+    Size = UDim2.fromOffset(15, 15),
+    Position = UDim2.fromOffset(44, 30),
+    BackgroundColor3 = CONFIG.SnakeHead,
+    BorderSizePixel = 0,
+    ZIndex = 8
+}, SnakeIcon)
+
+Corner(SnakeDot3, 50)
+
+--========================================
+-- HOME TEXT
+--========================================
+
+Label(
+    GameCard,
+    "Lunar Snake",
+    UDim2.fromOffset(250, 32),
+    UDim2.fromOffset(120, 25),
+    Enum.Font.GothamBold,
+    22
+)
+
+local Description = Label(
+    GameCard,
+    "Classic snake with a Lunar style.",
+    UDim2.fromOffset(320, 24),
+    UDim2.fromOffset(120, 59),
+    Enum.Font.Gotham,
+    12
+)
+
+Description.TextColor3 = CONFIG.Muted
+
+--========================================
+-- PLAY BUTTON
+--========================================
+
+local PlayButton = New("TextButton", {
+    Size = UDim2.fromOffset(170, 44),
+    Position = UDim2.fromOffset(120, 105),
+    BackgroundColor3 = CONFIG.PurpleDark,
+    Text = "PLAY",
+    TextColor3 = CONFIG.Text,
+    TextSize = 13,
     Font = Enum.Font.GothamBold,
-
     AutoButtonColor = false,
-
-    ZIndex = 30
-})
-
-Corner(PlayButton, 11)
-
---//====================================================//
---//                   INFO CARDS                     //
---//====================================================//
-
-local InfoHolder = New("Frame", Home, {
-    Size = UDim2.new(1, -20, 0, 75),
-
-    Position = UDim2.fromOffset(10, 202),
-
-    BackgroundTransparency = 1,
-
     BorderSizePixel = 0,
+    ZIndex = 10
+}, GameCard)
 
-    ZIndex = 5
-})
+Corner(PlayButton, 12)
 
-local BestCard = New("Frame", InfoHolder, {
-    Size = UDim2.new(0.48, 0, 1, 0),
+--========================================
+-- BEST SCORE CARD
+--========================================
 
-    Position = UDim2.fromScale(0, 0),
-
-    BackgroundColor3 = Config.Panel,
-
+local BestCard = New("Frame", {
+    Size = UDim2.new(0.48, -5, 0, 90),
+    Position = UDim2.fromOffset(10, 235),
+    BackgroundColor3 = CONFIG.Panel,
     BorderSizePixel = 0,
-
     ZIndex = 6
-})
+}, Home)
 
-Corner(BestCard, 12)
-Stroke(BestCard, Config.Accent, 1)
+Corner(BestCard, 14)
+Stroke(BestCard, CONFIG.PurpleDark, 1, 0.55)
 
 Label(
     BestCard,
     "BEST SCORE",
-    UDim2.new(1, -20, 0, 25),
-    UDim2.fromOffset(10, 7),
-    10,
-    Config.Muted
-)
+    UDim2.new(1, -20, 0, 24),
+    UDim2.fromOffset(10, 9),
+    Enum.Font.Gotham,
+    10
+).TextColor3 = CONFIG.Muted
 
 local BestLabel = Label(
     BestCard,
-    "0",
-    UDim2.new(1, -20, 0, 35),
-    UDim2.fromOffset(10, 30),
-    20,
-    Config.Text
+    tostring(Save.BestScore),
+    UDim2.new(1, -20, 0, 38),
+    UDim2.fromOffset(10, 29),
+    Enum.Font.GothamBold,
+    24
 )
 
-BestLabel.Font = Enum.Font.GothamBold
+--========================================
+-- MODE CARD
+--========================================
 
-local ModeCard = New("Frame", InfoHolder, {
-    Size = UDim2.new(0.48, 0, 1, 0),
-
-    Position = UDim2.new(0.52, 0, 0, 0),
-
-    BackgroundColor3 = Config.Panel,
-
+local ModeCard = New("Frame", {
+    Size = UDim2.new(0.48, -5, 0, 90),
+    Position = UDim2.new(0.52, 0, 0, 235),
+    BackgroundColor3 = CONFIG.Panel,
     BorderSizePixel = 0,
-
     ZIndex = 6
-})
+}, Home)
 
-Corner(ModeCard, 12)
-Stroke(ModeCard, Config.Accent, 1)
+Corner(ModeCard, 14)
+Stroke(ModeCard, CONFIG.PurpleDark, 1, 0.55)
 
 Label(
     ModeCard,
     "MODE",
-    UDim2.new(1, -20, 0, 25),
-    UDim2.fromOffset(10, 7),
-    10,
-    Config.Muted
-)
+    UDim2.new(1, -20, 0, 24),
+    UDim2.fromOffset(10, 9),
+    Enum.Font.Gotham,
+    10
+).TextColor3 = CONFIG.Muted
 
 Label(
     ModeCard,
     "CLASSIC",
-    UDim2.new(1, -20, 0, 35),
-    UDim2.fromOffset(10, 30),
-    15,
-    Config.Text
+    UDim2.new(1, -20, 0, 38),
+    UDim2.fromOffset(10, 29),
+    Enum.Font.GothamBold,
+    18
 )
 
---//====================================================//
---//                    GAME PAGE                     //
---//====================================================//
+--========================================
+-- GAME PAGE
+--========================================
 
-local GamePage = New("Frame", Content, {
+local GamePage = New("Frame", {
+    Name = "GamePage",
     Size = UDim2.fromScale(1, 1),
-
     BackgroundTransparency = 1,
-
-    BorderSizePixel = 0,
-
     Visible = false,
-
     ZIndex = 5
-})
+}, Content)
 
--- Game board
+--========================================
+-- GAME BOARD
+--========================================
 
-local BoardWidth = Config.Width * Config.CellSize
-local BoardHeight = Config.Height * Config.CellSize
-
-local Board = New("Frame", GamePage, {
+local Board = New("Frame", {
+    Name = "Board",
     Size = UDim2.fromOffset(
-        BoardWidth,
-        BoardHeight
+        CONFIG.Width * CONFIG.CellSize,
+        CONFIG.Height * CONFIG.CellSize
     ),
-
-    Position = UDim2.new(
-        0.5,
-        -(BoardWidth / 2),
-        0,
-        8
-    ),
-
-    BackgroundColor3 = Color3.fromRGB(5, 5, 11),
-
+    Position = UDim2.fromOffset(0, 8),
+    BackgroundColor3 = Color3.fromRGB(10, 9, 18),
     BorderSizePixel = 0,
-
     ClipsDescendants = true,
+    ZIndex = 6
+}, GamePage)
 
-    ZIndex = 10
-})
+Corner(Board, 14)
+Stroke(Board, CONFIG.PurpleDark, 1, 0.35)
 
-Corner(Board, 12)
-Stroke(Board, Config.Accent, 1)
+--========================================
+-- GRID
+--========================================
 
--- Grid
-
-for X = 1, Config.Width - 1 do
-    New("Frame", Board, {
-        Size = UDim2.new(
+for x = 1, CONFIG.Width - 1 do
+    local line = New("Frame", {
+        Size = UDim2.new(0, 1, 1, 0),
+        Position = UDim2.new(
             0,
-            1,
-            1,
+            x * CONFIG.CellSize,
+            0,
             0
         ),
-
-        Position = UDim2.fromOffset(
-            X * Config.CellSize,
-            0
-        ),
-
-        BackgroundColor3 = Config.Accent,
-
+        BackgroundColor3 = CONFIG.Purple,
         BackgroundTransparency = 0.94,
-
         BorderSizePixel = 0,
-
-        ZIndex = 11
-    })
+        ZIndex = 6
+    }, Board)
 end
 
-for Y = 1, Config.Height - 1 do
-    New("Frame", Board, {
-        Size = UDim2.new(
-            1,
+for y = 1, CONFIG.Height - 1 do
+    local line = New("Frame", {
+        Size = UDim2.new(1, 0, 0, 1),
+        Position = UDim2.new(
             0,
             0,
-            1
+            0,
+            y * CONFIG.CellSize
         ),
-
-        Position = UDim2.fromOffset(
-            0,
-            Y * Config.CellSize
-        ),
-
-        BackgroundColor3 = Config.Accent,
-
+        BackgroundColor3 = CONFIG.Purple,
         BackgroundTransparency = 0.94,
-
         BorderSizePixel = 0,
-
-        ZIndex = 11
-    })
+        ZIndex = 6
+    }, Board)
 end
 
--- Snake container
+--========================================
+-- SNAKE CONTAINER
+--========================================
 
-local SnakeContainer = New("Frame", Board, {
+local SnakeContainer = New("Frame", {
     Size = UDim2.fromScale(1, 1),
-
     BackgroundTransparency = 1,
+    ClipsDescendants = true,
+    ZIndex = 10
+}, Board)
 
+local FoodObject = New("Frame", {
+    Size = UDim2.fromOffset(
+        CONFIG.CellSize - 6,
+        CONFIG.CellSize - 6
+    ),
+    BackgroundColor3 = CONFIG.Food,
     BorderSizePixel = 0,
+    ZIndex = 11
+}, Board)
 
-    ZIndex = 20
-})
+Corner(FoodObject, 50)
 
---//====================================================//
---//                  SNAKE DATA                       //
---//====================================================//
+--========================================
+-- GAME DATA
+--========================================
 
-local Snake = {
-    {
-        X = 9,
-        Y = 7
-    },
+local Snake = {}
+local Direction = Save.Direction or "Right"
+local WantedDirection = Direction
 
-    {
-        X = 8,
-        Y = 7
-    },
+local Score = Save.Score or 0
+local BestScore = Save.BestScore or 0
 
-    {
-        X = 7,
+local GameRunning = Save.Running or false
+local GamePaused = Save.Paused or false
+
+local Food = Save.Food
+
+--========================================
+-- DEFAULT SNAKE
+--========================================
+
+if type(Save.Snake) == "table" and #Save.Snake > 0 then
+    for i, segment in ipairs(Save.Snake) do
+        Snake[i] = {
+            X = segment.X,
+            Y = segment.Y
+        }
+    end
+else
+    Snake = {
+        {X = 8, Y = 7},
+        {X = 7, Y = 7},
+        {X = 6, Y = 7},
+        {X = 5, Y = 7}
+    }
+end
+
+if not Food then
+    Food = {
+        X = 13,
         Y = 7
     }
-}
+end
 
-local Direction = {
-    X = 1,
-    Y = 0
-}
-
-local NextDirection = {
-    X = 1,
-    Y = 0
-}
-
-local Food = {
-    X = 13,
-    Y = 7
-}
-
-local Score = 0
-local BestScore = 0
-
-local Running = false
-local GameOver = false
-
---//====================================================//
---//                 DRAW SNAKE                        //
---//====================================================//
+--========================================
+-- DRAW SNAKE
+--========================================
 
 local function ClearSnake()
-    for _, Object in ipairs(SnakeContainer:GetChildren()) do
-        Object:Destroy()
+    for _, object in ipairs(SnakeContainer:GetChildren()) do
+        object:Destroy()
     end
 end
 
 local function DrawSnake()
     ClearSnake()
 
-    for Index, Segment in ipairs(Snake) do
+    for index, segment in ipairs(Snake) do
+        local part = New("Frame", {
+            Size = UDim2.fromOffset(
+                CONFIG.CellSize - 5,
+                CONFIG.CellSize - 5
+            ),
 
-        local IsHead = Index == 1
+            Position = UDim2.fromOffset(
+                (segment.X - 1) * CONFIG.CellSize + 2,
+                (segment.Y - 1) * CONFIG.CellSize + 2
+            ),
 
-        local SegmentFrame = New(
-            "Frame",
-            SnakeContainer,
-            {
-                Size = UDim2.fromOffset(
-                    Config.CellSize - 3,
-                    Config.CellSize - 3
-                ),
+            BackgroundColor3 =
+                index == 1
+                and CONFIG.SnakeHead
+                or CONFIG.Snake,
 
-                Position = UDim2.fromOffset(
-                    (Segment.X - 1) * Config.CellSize + 1,
-                    (Segment.Y - 1) * Config.CellSize + 1
-                ),
+            BorderSizePixel = 0,
+            ZIndex = index == 1 and 13 or 12
+        }, SnakeContainer)
 
-                BackgroundColor3 =
-                    IsHead
-                    and Config.SnakeHead
-                    or Config.Snake,
-
-                BorderSizePixel = 0,
-
-                ZIndex = 22
-            }
-        )
-
-        Corner(
-            SegmentFrame,
-            IsHead and 8 or 6
-        )
+        Corner(part, 6)
     end
 end
 
---//====================================================//
---//                    FOOD                          //
---//====================================================//
-
-local FoodObject = New("TextLabel", Board, {
-    Size = UDim2.fromOffset(
-        Config.CellSize,
-        Config.CellSize
-    ),
-
-    BackgroundTransparency = 1,
-
-    Text = "●",
-
-    TextColor3 = Config.Food,
-
-    TextSize = 19,
-
-    Font = Enum.Font.GothamBold,
-
-    TextXAlignment = Enum.TextXAlignment.Center,
-
-    TextYAlignment = Enum.TextYAlignment.Center,
-
-    ZIndex = 21
-})
+--========================================
+-- DRAW FOOD
+--========================================
 
 local function DrawFood()
     FoodObject.Position = UDim2.fromOffset(
-        (Food.X - 1) * Config.CellSize,
-        (Food.Y - 1) * Config.CellSize
+        (Food.X - 1) * CONFIG.CellSize + 3,
+        (Food.Y - 1) * CONFIG.CellSize + 3
     )
 end
-
--- Initial draw
 
 DrawSnake()
 DrawFood()
 
---//====================================================//
---//                  PAGE SWITCH                     //
---//====================================================//
+--========================================
+-- GAME UI
+--========================================
 
-local function OpenGame()
-    if Running then
-        return
+local ScoreLabel = Label(
+    GamePage,
+    "SCORE  " .. tostring(Score),
+    UDim2.fromOffset(110, 28),
+    UDim2.fromOffset(0, 330),
+    Enum.Font.GothamBold,
+    13
+)
+
+local BestGameLabel = Label(
+    GamePage,
+    "BEST  " .. tostring(BestScore),
+    UDim2.fromOffset(110, 24),
+    UDim2.fromOffset(0, 355),
+    Enum.Font.Gotham,
+    11
+)
+
+BestGameLabel.TextColor3 = CONFIG.Muted
+
+--========================================
+-- GAME STATUS
+--========================================
+
+local StatusLabel = Label(
+    GamePage,
+    "READY",
+    UDim2.fromOffset(100, 24),
+    UDim2.fromOffset(328, 8),
+    Enum.Font.GothamBold,
+    11
+)
+
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Right
+StatusLabel.TextColor3 = CONFIG.Muted
+
+--========================================
+-- MENU BUTTON
+--========================================
+
+local MenuButton = New("TextButton", {
+    Size = UDim2.fromOffset(95, 34),
+    Position = UDim2.fromOffset(328, 350),
+    BackgroundColor3 = CONFIG.Panel2,
+    Text = "MENU",
+    TextColor3 = CONFIG.Text,
+    TextSize = 11,
+    Font = Enum.Font.GothamBold,
+    AutoButtonColor = false,
+    BorderSizePixel = 0,
+    ZIndex = 20
+}, GamePage)
+
+Corner(MenuButton, 10)
+Stroke(MenuButton, CONFIG.PurpleDark, 1, 0.4)
+
+--========================================
+-- PAUSE BUTTON
+--========================================
+
+local PauseButton = New("TextButton", {
+    Size = UDim2.fromOffset(42, 42),
+    Position = UDim2.fromOffset(456, 6),
+    BackgroundColor3 = CONFIG.Panel2,
+    Text = "Ⅱ",
+    TextColor3 = CONFIG.Text,
+    TextSize = 16,
+    Font = Enum.Font.GothamBold,
+    AutoButtonColor = false,
+    BorderSizePixel = 0,
+    ZIndex = 20
+}, GamePage)
+
+Corner(PauseButton, 12)
+
+--========================================
+-- SAVE FUNCTION
+--========================================
+
+local function SaveGame()
+    Save.BestScore = BestScore
+    Save.Score = Score
+    Save.Direction = Direction
+    Save.Paused = GamePaused
+    Save.Running = GameRunning
+
+    Save.Snake = {}
+
+    for i, segment in ipairs(Snake) do
+        Save.Snake[i] = {
+            X = segment.X,
+            Y = segment.Y
+        }
     end
 
+    Save.Food = {
+        X = Food.X,
+        Y = Food.Y
+    }
+end
+
+--========================================
+-- UPDATE SCORE
+--========================================
+
+local function UpdateScore()
+    ScoreLabel.Text = "SCORE  " .. tostring(Score)
+    BestGameLabel.Text = "BEST  " .. tostring(BestScore)
+    BestLabel.Text = tostring(BestScore)
+end
+
+UpdateScore()
+
+--========================================
+-- PAGE SWITCHING
+--========================================
+
+local function ShowHome()
+    SaveGame()
+
+    GamePage.Visible = false
+    Home.Visible = true
+
+    Tween(
+        Home,
+        0.25,
+        {
+            Position = UDim2.fromOffset(0, 0)
+        }
+    )
+end
+
+local function ShowGame()
     Home.Visible = false
     GamePage.Visible = true
 
@@ -778,852 +833,715 @@ local function OpenGame()
         GamePage,
         0.25,
         {
-            BackgroundTransparency = 0
+            Position = UDim2.fromOffset(0, 0)
         }
     )
 end
 
-local function OpenHome()
-    Running = false
-    Home.Visible = true
-    GamePage.Visible = false
-end
-
--- Play
+--========================================
+-- PLAY BUTTON
+--========================================
 
 PlayButton.MouseButton1Click:Connect(function()
-    OpenGame()
-end)
+    ShowGame()
 
--- Close
-
-CloseButton.MouseButton1Click:Connect(function()
-    Gui:Destroy()
-end)
-
--- Hover effects
-
-PlayButton.MouseEnter:Connect(function()
-    Tween(
-        PlayButton,
-        0.15,
-        {
-            BackgroundColor3 = Config.Accent2
-        }
-    )
-end)
-
-PlayButton.MouseLeave:Connect(function()
-    Tween(
-        PlayButton,
-        0.15,
-        {
-            BackgroundColor3 = Config.Accent
-        }
-    )
-end)
-
---//====================================================//
---//                KEYBOARD CONTROL                   //
---//====================================================//
-
-UserInputService.InputBegan:Connect(function(Input, Processed)
-
-    if Processed then
-        return
+    if not GameRunning then
+        GameRunning = true
+        GamePaused = false
+        StatusLabel.Text = "RUNNING"
+    else
+        StatusLabel.Text =
+            GamePaused and "PAUSED" or "RUNNING"
     end
 
-    if not Running then
-        return
-    end
-
-    if Input.KeyCode == Enum.KeyCode.W
-        or Input.KeyCode == Enum.KeyCode.Up then
-
-        if Direction.Y ~= 1 then
-            NextDirection = {
-                X = 0,
-                Y = -1
-            }
-        end
-
-    elseif Input.KeyCode == Enum.KeyCode.S
-        or Input.KeyCode == Enum.KeyCode.Down then
-
-        if Direction.Y ~= -1 then
-            NextDirection = {
-                X = 0,
-                Y = 1
-            }
-        end
-
-    elseif Input.KeyCode == Enum.KeyCode.A
-        or Input.KeyCode == Enum.KeyCode.Left then
-
-        if Direction.X ~= 1 then
-            NextDirection = {
-                X = -1,
-                Y = 0
-            }
-        end
-
-    elseif Input.KeyCode == Enum.KeyCode.D
-        or Input.KeyCode == Enum.KeyCode.Right then
-
-        if Direction.X ~= -1 then
-            NextDirection = {
-                X = 1,
-                Y = 0
-            }
-        end
-    end
+    SaveGame()
 end)
 
---//====================================================//
---//                 END PART 1/3                      //
---////====================================================//
+--========================================
+-- MENU BUTTON
+--========================================
 
---//====================================================//
---//                  LUNAR SNAKE                      //
---//                    PART 2/3                       //
---//             GAMEPLAY / CONTROLS / SCORE           //
---//====================================================//
+MenuButton.MouseButton1Click:Connect(function()
+    ShowHome()
+end)
 
+--========================================
+-- BUTTON HOVER
+--========================================
 
---//====================================================//
---//                  GAME VARIABLES                   //
---//====================================================//
-
-local GameRunning = false
-local GamePaused = false
-local CurrentScore = 0
-local LocalBestScore = 0
-
-local MoveTimer = 0
-
-local CurrentDirection = {
-    X = 1,
-    Y = 0
-}
-
-local WantedDirection = {
-    X = 1,
-    Y = 0
-}
-
-
---//====================================================//
---//                 BOARD POSITION                    //
---//====================================================//
-
--- Move the board to the left so mobile controls
--- have their own separate area.
-
-Board.Position = UDim2.fromOffset(0, 8)
-
-
---//====================================================//
---//                 CONTROL PANEL                    //
---//====================================================//
-
-local ControlPanel = New("Frame", GamePage, {
-    Size = UDim2.fromOffset(92, 335),
-
-    Position = UDim2.new(
-        1,
-        -92,
-        0,
-        8
-    ),
-
-    BackgroundColor3 = Config.Panel,
-
-    BorderSizePixel = 0,
-
-    ZIndex = 25
-})
-
-Corner(ControlPanel, 14)
-Stroke(ControlPanel, Config.Accent, 1)
-
-
---//====================================================//
---//                  PAUSE BUTTON                     //
---//====================================================//
-
-local PauseButton = New("TextButton", ControlPanel, {
-    Size = UDim2.fromOffset(48, 40),
-
-    Position = UDim2.new(
-        0.5,
-        -24,
-        0,
-        10
-    ),
-
-    BackgroundColor3 = Config.Panel2,
-
-    BorderSizePixel = 0,
-
-    Text = "Ⅱ",
-
-    TextColor3 = Config.Text,
-
-    TextSize = 20,
-
-    Font = Enum.Font.GothamBold,
-
-    AutoButtonColor = false,
-
-    ZIndex = 30
-})
-
-Corner(PauseButton, 11)
-Stroke(PauseButton, Config.Accent, 1)
-
-
---//====================================================//
---//                 DIRECTION BUTTON                  //
---//====================================================//
-
-local function CreateDirectionButton(
-    Text,
-    Position
-)
-    local Button = New("TextButton", ControlPanel, {
-        Size = UDim2.fromOffset(42, 42),
-
-        Position = Position,
-
-        BackgroundColor3 = Config.Panel2,
-
-        BorderSizePixel = 0,
-
-        Text = Text,
-
-        TextColor3 = Config.Text,
-
-        TextSize = 20,
-
-        Font = Enum.Font.GothamBold,
-
-        AutoButtonColor = false,
-
-        ZIndex = 30
-    })
-
-    Corner(Button, 11)
-    Stroke(Button, Config.Accent, 1)
-
-    Button.MouseEnter:Connect(function()
+local function ButtonHover(button, normal, hover)
+    button.MouseEnter:Connect(function()
         Tween(
-            Button,
-            0.12,
+            button,
+            0.15,
             {
-                BackgroundColor3 = Config.Accent
+                BackgroundColor3 = hover
             }
         )
     end)
 
-    Button.MouseLeave:Connect(function()
+    button.MouseLeave:Connect(function()
         Tween(
-            Button,
-            0.12,
+            button,
+            0.15,
             {
-                BackgroundColor3 = Config.Panel2
+                BackgroundColor3 = normal
             }
         )
     end)
-
-    return Button
 end
 
-
---//====================================================//
---//              MOBILE DIRECTION BUTTONS             //
---//====================================================//
-
-local UpButton = CreateDirectionButton(
-    "▲",
-    UDim2.new(
-        0.5,
-        -21,
-        0,
-        65
-    )
+ButtonHover(
+    PlayButton,
+    CONFIG.PurpleDark,
+    CONFIG.Purple
 )
 
-local LeftButton = CreateDirectionButton(
-    "◀",
-    UDim2.new(
-        0.5,
-        -44,
-        0,
-        112
-    )
+ButtonHover(
+    MenuButton,
+    CONFIG.Panel2,
+    CONFIG.PurpleDark
 )
 
-local RightButton = CreateDirectionButton(
-    "▶",
-    UDim2.new(
-        0.5,
-        2,
-        0,
-        112
-    )
+ButtonHover(
+    PauseButton,
+    CONFIG.Panel2,
+    CONFIG.PurpleDark
 )
 
-local DownButton = CreateDirectionButton(
-    "▼",
-    UDim2.new(
-        0.5,
-        -21,
-        0,
-        159
-    )
+ButtonHover(
+    MinimizeButton,
+    CONFIG.Panel2,
+    CONFIG.PurpleDark
 )
 
-
---//====================================================//
---//                  CONTROL LABEL                   //
---//====================================================//
-
-local ControlLabel = Label(
-    ControlPanel,
-    "CONTROLS",
-    UDim2.fromOffset(82, 20),
-    UDim2.fromOffset(5, 212),
-    9,
-    Config.Muted
+ButtonHover(
+    CloseButton,
+    CONFIG.Panel2,
+    Color3.fromRGB(110, 45, 75)
 )
 
-ControlLabel.TextXAlignment = Enum.TextXAlignment.Center
+--========================================
+-- MINIMIZE STATE
+--========================================
 
-
---//====================================================//
---//                   SCORE PANEL                    //
---//====================================================//
-
-local ScorePanel = New("Frame", GamePage, {
-    Size = UDim2.fromOffset(150, 30),
-
-    Position = UDim2.fromOffset(0, 350),
-
-    BackgroundColor3 = Config.Panel,
-
-    BorderSizePixel = 0,
-
-    ZIndex = 25
-})
-
-Corner(ScorePanel, 9)
-
-local GameScoreLabel = Label(
-    ScorePanel,
-    "SCORE  0",
-    UDim2.fromScale(1, 1),
-    UDim2.fromOffset(0, 0),
-    11,
-    Config.Text
-)
-
-GameScoreLabel.TextXAlignment = Enum.TextXAlignment.Center
-
-
---//====================================================//
---//                    BEST SCORE                     //
---//====================================================//
-
-local BestGameLabel = Label(
-    GamePage,
-    "BEST  0",
-    UDim2.fromOffset(100, 30),
-    UDim2.fromOffset(165, 350),
-    11,
-    Config.Muted
-)
-
-BestGameLabel.TextXAlignment = Enum.TextXAlignment.Center
-
-
---//====================================================//
---//                 GAME OVER PANEL                  //
---//====================================================//
-
-local GameOverPanel = New("Frame", GamePage, {
-    Size = UDim2.fromOffset(280, 205),
-
-    Position = UDim2.new(
-        0.5,
-        -140,
-        0.5,
-        -103
-    ),
-
-    BackgroundColor3 = Config.Panel,
-
-    BorderSizePixel = 0,
-
+local MiniBar = New("TextButton", {
+    Name = "MiniBar",
+    Size = UDim2.fromOffset(190, 46),
+    Position = UDim2.new(0.5, -95, 0.5, -23),
+    BackgroundColor3 = CONFIG.Panel,
+    Text = "",
+    AutoButtonColor = false,
     Visible = false,
-
+    BorderSizePixel = 0,
     ZIndex = 100
-})
+}, Gui)
 
-Corner(GameOverPanel, 16)
-Stroke(GameOverPanel, Config.Accent, 2)
+Corner(MiniBar, 14)
+Stroke(MiniBar, CONFIG.PurpleDark, 1, 0.25)
 
+--========================================
+-- MINI LOGO
+--========================================
 
---//====================================================//
---//                 GAME OVER TITLE                  //
---//====================================================//
+local MiniLogo = New("Frame", {
+    Size = UDim2.fromOffset(28, 28),
+    Position = UDim2.fromOffset(10, 9),
+    BackgroundColor3 = CONFIG.Panel2,
+    BorderSizePixel = 0,
+    ZIndex = 101
+}, MiniBar)
+
+Corner(MiniLogo, 9)
+
+local MiniMoon = New("Frame", {
+    Size = UDim2.fromOffset(15, 15),
+    Position = UDim2.new(0.5, -7, 0.5, -7),
+    BackgroundColor3 = Color3.fromRGB(191, 157, 255),
+    BorderSizePixel = 0,
+    ZIndex = 102
+}, MiniLogo)
+
+Corner(MiniMoon, 50)
+
+local MiniCut = New("Frame", {
+    Size = UDim2.fromOffset(14, 14),
+    Position = UDim2.fromOffset(6, -2),
+    BackgroundColor3 = CONFIG.Panel2,
+    BorderSizePixel = 0,
+    ZIndex = 103
+}, MiniMoon)
+
+Corner(MiniCut, 50)
+
+local MiniTitle = Label(
+    MiniBar,
+    "LUNAR SNAKE",
+    UDim2.fromOffset(120, 28),
+    UDim2.fromOffset(48, 9),
+    Enum.Font.GothamBold,
+    13
+)
+
+MiniTitle.ZIndex = 102
+
+--========================================
+-- MINIMIZE FUNCTION
+--========================================
+
+local Minimized = false
+
+local function Minimize()
+    SaveGame()
+
+    Minimized = true
+    Holder.Visible = false
+    MiniBar.Visible = true
+
+    MiniBar.Size = UDim2.fromOffset(160, 40)
+
+    Tween(
+        MiniBar,
+        0.25,
+        {
+            Size = UDim2.fromOffset(190, 46)
+        }
+    )
+end
+
+local function Restore()
+    Minimized = false
+    MiniBar.Visible = false
+    Holder.Visible = true
+
+    Holder.Size = UDim2.fromOffset(520, 430)
+    Holder.Position = UDim2.new(0.5, -260, 0.5, -215)
+
+    Tween(
+        Holder,
+        0.3,
+        {
+            Size = UDim2.fromOffset(570, 470),
+            Position = UDim2.new(0.5, -285, 0.5, -235)
+        }
+    )
+
+    if GameRunning then
+        StatusLabel.Text =
+            GamePaused and "PAUSED" or "RUNNING"
+    end
+end
+
+MinimizeButton.MouseButton1Click:Connect(Minimize)
+MiniBar.MouseButton1Click:Connect(Restore)
+
+--========================================
+-- CLOSE BUTTON
+--========================================
+
+CloseButton.MouseButton1Click:Connect(function()
+    SaveGame()
+
+    Tween(
+        Holder,
+        0.25,
+        {
+            Size = UDim2.fromOffset(520, 430),
+            BackgroundTransparency = 1
+        }
+    ).Completed:Connect(function()
+        Gui:Destroy()
+    end)
+end)
+
+--========================================
+-- INITIAL POSITION
+--========================================
+
+Holder.Size = UDim2.fromOffset(520, 430)
+Holder.BackgroundTransparency = 1
+
+Tween(
+    Holder,
+    0.35,
+    {
+        Size = UDim2.fromOffset(570, 470),
+        BackgroundTransparency = 0
+    },
+    Enum.EasingStyle.Back
+)
+
+--========================================
+-- INITIAL PAGE
+--========================================
+
+Home.Visible = true
+GamePage.Visible = false
+
+--========================================
+-- END PART 1/3
+--========================================
+
+--========================================
+-- LUNAR SNAKE
+-- PART 2/3
+-- GAMEPLAY / CONTROLS / PAUSE
+--========================================
+
+--========================================
+-- GAME VARIABLES
+--========================================
+
+local MoveTimer = 0
+local CurrentDirection = Direction
+local WantedDirection = Direction
+
+local TouchStart = nil
+
+--========================================
+-- DIRECTION CHECK
+--========================================
+
+local Opposite = {
+    Up = "Down",
+    Down = "Up",
+    Left = "Right",
+    Right = "Left"
+}
+
+local DirectionVector = {
+    Up = Vector2.new(0, -1),
+    Down = Vector2.new(0, 1),
+    Left = Vector2.new(-1, 0),
+    Right = Vector2.new(1, 0)
+}
+
+local function SetDirection(newDirection)
+    if not DirectionVector[newDirection] then
+        return
+    end
+
+    if Opposite[CurrentDirection] == newDirection then
+        return
+    end
+
+    WantedDirection = newDirection
+end
+
+--========================================
+-- MOBILE CONTROLS PANEL
+--========================================
+
+local ControlPanel = New("Frame", {
+    Name = "ControlPanel",
+    Size = UDim2.fromOffset(100, 220),
+    Position = UDim2.fromOffset(440, 58),
+    BackgroundColor3 = CONFIG.Panel,
+    BorderSizePixel = 0,
+    ZIndex = 15
+}, GamePage)
+
+Corner(ControlPanel, 14)
+Stroke(ControlPanel, CONFIG.PurpleDark, 1, 0.4)
+
+--========================================
+-- CONTROL BUTTON CREATOR
+--========================================
+
+local function CreateControlButton(name, text, position)
+    local button = New("TextButton", {
+        Name = name,
+        Size = UDim2.fromOffset(48, 48),
+        Position = position,
+        BackgroundColor3 = CONFIG.Panel2,
+        Text = text,
+        TextColor3 = CONFIG.Text,
+        TextSize = 18,
+        Font = Enum.Font.GothamBold,
+        AutoButtonColor = false,
+        BorderSizePixel = 0,
+        ZIndex = 20
+    }, ControlPanel)
+
+    Corner(button, 12)
+    Stroke(button, CONFIG.PurpleDark, 1, 0.5)
+
+    button.MouseEnter:Connect(function()
+        Tween(
+            button,
+            0.12,
+            {
+                BackgroundColor3 = CONFIG.PurpleDark,
+                Size = UDim2.fromOffset(51, 51)
+            }
+        )
+    end)
+
+    button.MouseLeave:Connect(function()
+        Tween(
+            button,
+            0.12,
+            {
+                BackgroundColor3 = CONFIG.Panel2,
+                Size = UDim2.fromOffset(48, 48)
+            }
+        )
+    end)
+
+    return button
+end
+
+--========================================
+-- DIRECTION BUTTONS
+--========================================
+
+local UpButton = CreateControlButton(
+    "UpButton",
+    "▲",
+    UDim2.fromOffset(26, 10)
+)
+
+local LeftButton = CreateControlButton(
+    "LeftButton",
+    "◀",
+    UDim2.fromOffset(0, 64)
+)
+
+local RightButton = CreateControlButton(
+    "RightButton",
+    "▶",
+    UDim2.fromOffset(52, 64)
+)
+
+local DownButton = CreateControlButton(
+    "DownButton",
+    "▼",
+    UDim2.fromOffset(26, 118)
+)
+
+--========================================
+-- CONTROL LABEL
+--========================================
+
+local ControlText = Label(
+    ControlPanel,
+    "WASD / ARROWS",
+    UDim2.new(1, -10, 0, 24),
+    UDim2.fromOffset(5, 176),
+    Enum.Font.GothamBold,
+    9
+)
+
+ControlText.TextXAlignment = Enum.TextXAlignment.Center
+ControlText.TextColor3 = CONFIG.Muted
+
+--========================================
+-- BUTTON EVENTS
+--========================================
+
+UpButton.MouseButton1Click:Connect(function()
+    SetDirection("Up")
+end)
+
+DownButton.MouseButton1Click:Connect(function()
+    SetDirection("Down")
+end)
+
+LeftButton.MouseButton1Click:Connect(function()
+    SetDirection("Left")
+end)
+
+RightButton.MouseButton1Click:Connect(function()
+    SetDirection("Right")
+end)
+
+--========================================
+-- SCORE PANEL
+--========================================
+
+local ScorePanel = New("Frame", {
+    Name = "ScorePanel",
+    Size = UDim2.fromOffset(205, 55),
+    Position = UDim2.fromOffset(0, 322),
+    BackgroundColor3 = CONFIG.Panel,
+    BorderSizePixel = 0,
+    ZIndex = 15
+}, GamePage)
+
+Corner(ScorePanel, 12)
+Stroke(ScorePanel, CONFIG.PurpleDark, 1, 0.45)
+
+ScoreLabel.Parent = ScorePanel
+ScoreLabel.Position = UDim2.fromOffset(12, 2)
+ScoreLabel.Size = UDim2.fromOffset(180, 27)
+ScoreLabel.ZIndex = 20
+
+BestGameLabel.Parent = ScorePanel
+BestGameLabel.Position = UDim2.fromOffset(12, 28)
+BestGameLabel.Size = UDim2.fromOffset(180, 20)
+BestGameLabel.ZIndex = 20
+
+--========================================
+-- GAME OVER PANEL
+--========================================
+
+local GameOverPanel = New("Frame", {
+    Name = "GameOverPanel",
+    Size = UDim2.fromOffset(390, 235),
+    Position = UDim2.new(0.5, -195, 0.5, -118),
+    BackgroundColor3 = CONFIG.Panel,
+    BorderSizePixel = 0,
+    Visible = false,
+    ZIndex = 80
+}, GamePage)
+
+Corner(GameOverPanel, 18)
+Stroke(GameOverPanel, CONFIG.Purple, 1, 0.25)
 
 local GameOverTitle = Label(
     GameOverPanel,
     "GAME OVER",
-    UDim2.new(1, -20, 0, 45),
-    UDim2.fromOffset(10, 20),
-    23,
-    Config.Text
+    UDim2.new(1, -30, 0, 40),
+    UDim2.fromOffset(15, 25),
+    Enum.Font.GothamBold,
+    24
 )
 
 GameOverTitle.TextXAlignment = Enum.TextXAlignment.Center
-GameOverTitle.Font = Enum.Font.GothamBold
-
-
---//====================================================//
---//                 FINAL SCORE                     //
---//====================================================//
+GameOverTitle.ZIndex = 81
 
 local FinalScoreLabel = Label(
     GameOverPanel,
     "SCORE  0",
-    UDim2.new(1, -20, 0, 25),
-    UDim2.fromOffset(10, 65),
-    12,
-    Config.Muted
+    UDim2.new(1, -30, 0, 25),
+    UDim2.fromOffset(15, 73),
+    Enum.Font.GothamBold,
+    13
 )
 
 FinalScoreLabel.TextXAlignment = Enum.TextXAlignment.Center
-
+FinalScoreLabel.ZIndex = 81
 
 local FinalBestLabel = Label(
     GameOverPanel,
     "BEST  0",
-    UDim2.new(1, -20, 0, 25),
-    UDim2.fromOffset(10, 90),
-    12,
-    Config.Muted
+    UDim2.new(1, -30, 0, 25),
+    UDim2.fromOffset(15, 98),
+    Enum.Font.Gotham,
+    11
 )
 
 FinalBestLabel.TextXAlignment = Enum.TextXAlignment.Center
+FinalBestLabel.TextColor3 = CONFIG.Muted
+FinalBestLabel.ZIndex = 81
 
+--========================================
+-- RESTART BUTTON
+--========================================
 
---//====================================================//
---//                  RESTART BUTTON                   //
---//====================================================//
-
-local RestartButton = New("TextButton", GameOverPanel, {
-    Size = UDim2.fromOffset(125, 38),
-
-    Position = UDim2.fromOffset(15, 145),
-
-    BackgroundColor3 = Config.Accent,
-
-    BorderSizePixel = 0,
-
-    Text = "↻  PLAY AGAIN",
-
-    TextColor3 = Config.Text,
-
-    TextSize = 11,
-
+local RestartButton = New("TextButton", {
+    Size = UDim2.fromOffset(150, 42),
+    Position = UDim2.fromOffset(25, 150),
+    BackgroundColor3 = CONFIG.PurpleDark,
+    Text = "RESTART",
+    TextColor3 = CONFIG.Text,
+    TextSize = 12,
     Font = Enum.Font.GothamBold,
-
     AutoButtonColor = false,
-
-    ZIndex = 110
-})
-
-Corner(RestartButton, 10)
-
-
---//====================================================//
---//                    HOME BUTTON                   //
---//====================================================//
-
-local HomeButton = New("TextButton", GameOverPanel, {
-    Size = UDim2.fromOffset(115, 38),
-
-    Position = UDim2.fromOffset(150, 145),
-
-    BackgroundColor3 = Config.Panel2,
-
     BorderSizePixel = 0,
+    ZIndex = 82
+}, GameOverPanel)
 
-    Text = "⌂  MENU",
+Corner(RestartButton, 11)
 
-    TextColor3 = Config.Text,
+--========================================
+-- GAME OVER MENU BUTTON
+--========================================
 
-    TextSize = 11,
-
+local GameOverMenu = New("TextButton", {
+    Size = UDim2.fromOffset(150, 42),
+    Position = UDim2.fromOffset(215, 150),
+    BackgroundColor3 = CONFIG.Panel2,
+    Text = "MENU",
+    TextColor3 = CONFIG.Text,
+    TextSize = 12,
     Font = Enum.Font.GothamBold,
-
     AutoButtonColor = false,
-
-    ZIndex = 110
-})
-
-Corner(HomeButton, 10)
-Stroke(HomeButton, Config.Accent, 1)
-
-
---//====================================================//
---//                  PAUSE OVERLAY                    //
---//====================================================//
-
-local PauseOverlay = New("Frame", GamePage, {
-    Size = UDim2.fromOffset(280, 170),
-
-    Position = UDim2.new(
-        0.5,
-        -140,
-        0.5,
-        -85
-    ),
-
-    BackgroundColor3 = Config.Panel,
-
     BorderSizePixel = 0,
+    ZIndex = 82
+}, GameOverPanel)
 
+Corner(GameOverMenu, 11)
+
+--========================================
+-- PAUSE OVERLAY
+--========================================
+
+local PauseOverlay = New("Frame", {
+    Name = "PauseOverlay",
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = Color3.fromRGB(5, 4, 10),
+    BackgroundTransparency = 0.18,
+    BorderSizePixel = 0,
     Visible = false,
-
-    ZIndex = 90
-})
-
-Corner(PauseOverlay, 16)
-Stroke(PauseOverlay, Config.Accent, 2)
-
-
---//====================================================//
---//                    PAUSE TITLE                   //
---//====================================================//
+    ZIndex = 70
+}, GamePage)
 
 local PauseTitle = Label(
     PauseOverlay,
     "PAUSED",
-    UDim2.new(1, -20, 0, 45),
-    UDim2.fromOffset(10, 20),
-    23,
-    Config.Text
+    UDim2.new(1, 0, 0, 42),
+    UDim2.fromOffset(0, 105),
+    Enum.Font.GothamBold,
+    26
 )
 
 PauseTitle.TextXAlignment = Enum.TextXAlignment.Center
-PauseTitle.Font = Enum.Font.GothamBold
+PauseTitle.ZIndex = 71
 
-
---//====================================================//
---//                RESUME BUTTON                    //
---//====================================================//
-
-local ResumeButton = New("TextButton", PauseOverlay, {
-    Size = UDim2.fromOffset(120, 40),
-
-    Position = UDim2.new(
-        0.5,
-        -60,
-        1,
-        -58
-    ),
-
-    BackgroundColor3 = Config.Accent,
-
-    BorderSizePixel = 0,
-
-    Text = "▶  RESUME",
-
-    TextColor3 = Config.Text,
-
+local ResumeButton = New("TextButton", {
+    Size = UDim2.fromOffset(150, 42),
+    Position = UDim2.new(0.5, -75, 0, 165),
+    BackgroundColor3 = CONFIG.PurpleDark,
+    Text = "RESUME",
+    TextColor3 = CONFIG.Text,
     TextSize = 12,
-
     Font = Enum.Font.GothamBold,
-
     AutoButtonColor = false,
+    BorderSizePixel = 0,
+    ZIndex = 72
+}, PauseOverlay)
 
-    ZIndex = 100
-})
+Corner(ResumeButton, 11)
 
-Corner(ResumeButton, 10)
+--========================================
+-- PAUSE FUNCTION
+--========================================
 
-
---//====================================================//
---//                  RANDOM FOOD                    //
---//====================================================//
-
-local function IsSnakePosition(X, Y)
-    for _, Segment in ipairs(Snake) do
-        if Segment.X == X and Segment.Y == Y then
-            return true
-        end
-    end
-
-    return false
-end
-
-
-local function GenerateFood()
-
-    local Attempts = 0
-
-    repeat
-        Food.X = math.random(
-            1,
-            Config.Width
-        )
-
-        Food.Y = math.random(
-            1,
-            Config.Height
-        )
-
-        Attempts += 1
-
-        if Attempts > 200 then
-            break
-        end
-
-    until not IsSnakePosition(
-        Food.X,
-        Food.Y
-    )
-
-    DrawFood()
-end
-
-
---//====================================================//
---//                   RESET GAME                     //
---//====================================================//
-
-local function ResetGame()
-
-    Snake = {
-        {
-            X = 9,
-            Y = 7
-        },
-
-        {
-            X = 8,
-            Y = 7
-        },
-
-        {
-            X = 7,
-            Y = 7
-        }
-    }
-
-    Direction = {
-        X = 1,
-        Y = 0
-    }
-
-    NextDirection = {
-        X = 1,
-        Y = 0
-    }
-
-    CurrentDirection = {
-        X = 1,
-        Y = 0
-    }
-
-    WantedDirection = {
-        X = 1,
-        Y = 0
-    }
-
-    Score = 0
-    CurrentScore = 0
-
-    GamePaused = false
-    GameOver = false
-
-    MoveTimer = 0
-
-    PauseOverlay.Visible = false
-    GameOverPanel.Visible = false
-
-    ScoreLabel.Text = "SCORE  0"
-
-    GameScoreLabel.Text = "SCORE  0"
-
-    BestGameLabel.Text =
-        "BEST  " .. tostring(LocalBestScore)
-
-    GenerateFood()
-
-    DrawSnake()
-    DrawFood()
-end
-
-
---//====================================================//
---//                 DIRECTION SYSTEM                 //
---//====================================================//
-
-local function SetDirection(X, Y)
-
+local function SetPaused(state)
     if not GameRunning then
         return
     end
 
-    if GamePaused then
-        return
-    end
+    GamePaused = state
+    Save.Paused = state
 
-    -- Prevent instant 180-degree turns
+    PauseOverlay.Visible = state
 
-    if X == -CurrentDirection.X
-        and Y == -CurrentDirection.Y then
-        return
-    end
-
-    if X == -Direction.X
-        and Y == -Direction.Y then
-        return
-    end
-
-    WantedDirection = {
-        X = X,
-        Y = Y
-    }
-
-    NextDirection = {
-        X = X,
-        Y = Y
-    }
-end
-
-
---//====================================================//
---//              MOBILE BUTTON EVENTS                //
---//====================================================//
-
-UpButton.MouseButton1Click:Connect(function()
-    SetDirection(0, -1)
-end)
-
-DownButton.MouseButton1Click:Connect(function()
-    SetDirection(0, 1)
-end)
-
-LeftButton.MouseButton1Click:Connect(function()
-    SetDirection(-1, 0)
-end)
-
-RightButton.MouseButton1Click:Connect(function()
-    SetDirection(1, 0)
-end)
-
-
---//====================================================//
---//                  PAUSE SYSTEM                    //
---//====================================================//
-
-local function SetPaused(State)
-
-    if not GameRunning then
-        return
-    end
-
-    GamePaused = State
-
-    PauseOverlay.Visible = State
-
-    if State then
-        PauseButton.Text = "▶"
+    if state then
+        StatusLabel.Text = "PAUSED"
     else
-        PauseButton.Text = "Ⅱ"
+        StatusLabel.Text = "RUNNING"
     end
-end
 
+    SaveGame()
+end
 
 PauseButton.MouseButton1Click:Connect(function()
-
-    if GamePaused then
-        SetPaused(false)
-    else
-        SetPaused(true)
-    end
-
+    SetPaused(not GamePaused)
 end)
-
 
 ResumeButton.MouseButton1Click:Connect(function()
     SetPaused(false)
 end)
 
+--========================================
+-- FOOD GENERATION
+--========================================
 
---//====================================================//
---//                  GAME OVER                       //
---//====================================================//
+local function IsSnakePosition(x, y)
+    for _, segment in ipairs(Snake) do
+        if segment.X == x and segment.Y == y then
+            return true
+        end
+    end
 
-local function EndGame()
-
-    GameRunning = false
-    Running = false
-
-    GameOver = true
-    GamePaused = false
-
-    PauseOverlay.Visible = false
-
-    FinalScoreLabel.Text =
-        "SCORE  " .. tostring(CurrentScore)
-
-    FinalBestLabel.Text =
-        "BEST  " .. tostring(LocalBestScore)
-
-    GameOverPanel.Visible = true
-
-    GameOverPanel.Size =
-        UDim2.fromOffset(240, 175)
-
-    Tween(
-        GameOverPanel,
-        0.25,
-        {
-            Size = UDim2.fromOffset(280, 205)
-        }
-    )
+    return false
 end
 
+local function GenerateFood()
+    local freeCells = {}
 
---//====================================================//
---//                 COLLISION CHECK                  //
---//====================================================//
+    for x = 1, CONFIG.Width do
+        for y = 1, CONFIG.Height do
+            if not IsSnakePosition(x, y) then
+                table.insert(
+                    freeCells,
+                    {
+                        X = x,
+                        Y = y
+                    }
+                )
+            end
+        end
+    end
 
-local function CheckCollision(HeadX, HeadY)
+    if #freeCells == 0 then
+        return
+    end
 
-    -- Wall collision
+    local selected =
+        freeCells[math.random(1, #freeCells)]
 
-    if HeadX < 1
-        or HeadX > Config.Width
-        or HeadY < 1
-        or HeadY > Config.Height then
+    Food = {
+        X = selected.X,
+        Y = selected.Y
+    }
+
+    DrawFood()
+end
+
+--========================================
+-- RESET GAME
+--========================================
+
+local function ResetGame()
+    Snake = {
+        {X = 8, Y = 7},
+        {X = 7, Y = 7},
+        {X = 6, Y = 7},
+        {X = 5, Y = 7}
+    }
+
+    Direction = "Right"
+    WantedDirection = "Right"
+    CurrentDirection = "Right"
+
+    Score = 0
+    GameRunning = true
+    GamePaused = false
+
+    GenerateFood()
+    DrawSnake()
+    DrawFood()
+    UpdateScore()
+
+    PauseOverlay.Visible = false
+    GameOverPanel.Visible = false
+
+    StatusLabel.Text = "RUNNING"
+
+    SaveGame()
+end
+
+--========================================
+-- COLLISION CHECK
+--========================================
+
+local function CheckCollision(head)
+    if head.X < 1
+        or head.X > CONFIG.Width
+        or head.Y < 1
+        or head.Y > CONFIG.Height then
 
         return true
     end
 
-    -- Self collision
+    for i = 2, #Snake do
+        local segment = Snake[i]
 
-    for Index = 2, #Snake do
-
-        local Segment = Snake[Index]
-
-        if Segment.X == HeadX
-            and Segment.Y == HeadY then
+        if segment.X == head.X
+            and segment.Y == head.Y then
 
             return true
         end
@@ -1632,778 +1550,716 @@ local function CheckCollision(HeadX, HeadY)
     return false
 end
 
+--========================================
+-- GAME OVER
+--========================================
 
---//====================================================//
---//                  MOVE SNAKE                      //
---//====================================================//
+local function EndGame()
+    GameRunning = false
+    GamePaused = false
+
+    StatusLabel.Text = "GAME OVER"
+
+    if Score > BestScore then
+        BestScore = Score
+    end
+
+    FinalScoreLabel.Text =
+        "SCORE  " .. tostring(Score)
+
+    FinalBestLabel.Text =
+        "BEST  " .. tostring(BestScore)
+
+    UpdateScore()
+    SaveGame()
+
+    GameOverPanel.Visible = true
+    GameOverPanel.Size = UDim2.fromOffset(350, 210)
+
+    Tween(
+        GameOverPanel,
+        0.25,
+        {
+            Size = UDim2.fromOffset(390, 235)
+        },
+        Enum.EasingStyle.Back
+    )
+end
+
+--========================================
+-- MOVE SNAKE
+--========================================
 
 local function MoveSnake()
+    if not GameRunning or GamePaused then
+        return
+    end
 
-    Direction = {
-        X = NextDirection.X,
-        Y = NextDirection.Y
+    if WantedDirection
+        and Opposite[CurrentDirection] ~= WantedDirection then
+
+        CurrentDirection = WantedDirection
+        Direction = WantedDirection
+    end
+
+    local vector =
+        DirectionVector[CurrentDirection]
+
+    local head = Snake[1]
+
+    local newHead = {
+        X = head.X + vector.X,
+        Y = head.Y + vector.Y
     }
 
-    CurrentDirection = {
-        X = Direction.X,
-        Y = Direction.Y
-    }
-
-    local Head = Snake[1]
-
-    local NewHead = {
-        X = Head.X + Direction.X,
-        Y = Head.Y + Direction.Y
-    }
-
-    if CheckCollision(
-        NewHead.X,
-        NewHead.Y
-    ) then
-
+    if CheckCollision(newHead) then
         EndGame()
-
         return
     end
 
     table.insert(
         Snake,
         1,
-        NewHead
+        newHead
     )
 
-    -- Food eaten
+    if newHead.X == Food.X
+        and newHead.Y == Food.Y then
 
-    if NewHead.X == Food.X
-        and NewHead.Y == Food.Y then
+        Score += 1
 
-        CurrentScore += 1
-
-        Score = CurrentScore
-
-        if CurrentScore > LocalBestScore then
-            LocalBestScore = CurrentScore
+        if Score > BestScore then
+            BestScore = Score
         end
 
-        ScoreLabel.Text =
-            "SCORE  " .. tostring(CurrentScore)
-
-        GameScoreLabel.Text =
-            "SCORE  " .. tostring(CurrentScore)
-
-        BestGameLabel.Text =
-            "BEST  " .. tostring(LocalBestScore)
-
-        BestLabel.Text =
-            tostring(LocalBestScore)
-
         GenerateFood()
-
+        UpdateScore()
     else
-        table.remove(
-            Snake,
-            #Snake
-        )
+        table.remove(Snake)
     end
 
     DrawSnake()
+    SaveGame()
 end
 
-
---//====================================================//
---//                   START GAME                     //
---//====================================================//
+--========================================
+-- START / RESUME EXISTING GAME
+--========================================
 
 local function StartGame()
+    if not GameRunning then
+        ResetGame()
+        return
+    end
 
-    ResetGame()
-
-    GameRunning = true
-    Running = true
-
-    Home.Visible = false
     GamePage.Visible = true
+    Home.Visible = false
 
-    GameOverPanel.Visible = false
-    PauseOverlay.Visible = false
+    PauseOverlay.Visible = GamePaused
 
-    Tween(
-        GamePage,
-        0.22,
-        {
-            BackgroundTransparency = 0
-        }
-    )
+    StatusLabel.Text =
+        GamePaused and "PAUSED" or "RUNNING"
+
+    UpdateScore()
+    DrawSnake()
+    DrawFood()
 end
 
+--========================================
+-- RESTART
+--========================================
 
---//====================================================//
---//                 PLAY BUTTON                     //
---//====================================================//
+RestartButton.MouseButton1Click:Connect(function()
+    ResetGame()
+end)
+
+--========================================
+-- GAME OVER MENU
+--========================================
+
+GameOverMenu.MouseButton1Click:Connect(function()
+    GameOverPanel.Visible = false
+    ShowHome()
+end)
+
+--========================================
+-- PLAY BUTTON OVERRIDE
+--========================================
 
 PlayButton.MouseButton1Click:Connect(function()
     StartGame()
 end)
 
+--========================================
+-- GAME LOOP
+--========================================
 
---//====================================================//
---//                RESTART BUTTON                   //
---//====================================================//
-
-RestartButton.MouseButton1Click:Connect(function()
-    StartGame()
-end)
-
-
---//====================================================//
---//                   HOME BUTTON                   //
---//====================================================//
-
-HomeButton.MouseButton1Click:Connect(function()
-
-    GameRunning = false
-    Running = false
-
-    GamePaused = false
-    GameOver = false
-
-    GameOverPanel.Visible = false
-    PauseOverlay.Visible = false
-
-    Home.Visible = true
-    GamePage.Visible = false
-
-end)
-
-
---//====================================================//
---//                 BUTTON EFFECTS                   //
---//====================================================//
-
-RestartButton.MouseEnter:Connect(function()
-
-    Tween(
-        RestartButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent2
-        }
-    )
-
-end)
-
-
-RestartButton.MouseLeave:Connect(function()
-
-    Tween(
-        RestartButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent
-        }
-    )
-
-end)
-
-
-HomeButton.MouseEnter:Connect(function()
-
-    Tween(
-        HomeButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent
-        }
-    )
-
-end)
-
-
-HomeButton.MouseLeave:Connect(function()
-
-    Tween(
-        HomeButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Panel2
-        }
-    )
-
-end)
-
-
---//====================================================//
---//                  GAME LOOP                       //
---//====================================================//
-
-RunService.Heartbeat:Connect(function(DeltaTime)
-
-    if not GameRunning then
+RunService.Heartbeat:Connect(function(deltaTime)
+    if not GameRunning or GamePaused then
         return
     end
 
-    if GamePaused then
-        return
-    end
+    MoveTimer += deltaTime
 
-    if GameOver then
-        return
-    end
-
-    MoveTimer += DeltaTime
-
-    if MoveTimer >= Config.GameSpeed then
-
+    if MoveTimer >= CONFIG.GameSpeed then
         MoveTimer = 0
-
         MoveSnake()
     end
-
 end)
 
-
---//====================================================//
---//                 INITIAL STATE                    //
---//====================================================//
-
-BestGameLabel.Text =
-    "BEST  " .. tostring(LocalBestScore)
-
-BestLabel.Text =
-    tostring(LocalBestScore)
-
-GameScoreLabel.Text =
-    "SCORE  0"
-
-
---//====================================================//
---//                END OF PART 2/3                  //
---//====================================================//
-
 --========================================
--- LUNAR SNAKE - PART 3/3
--- FINAL CONTROLS / ANIMATIONS / CLEANUP
+-- KEYBOARD CONTROLS
 --========================================
 
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then
+        return
+    end
 
---========================================
--- BACK TO MENU BUTTON
---========================================
+    if not GamePage.Visible then
+        return
+    end
 
-local BackButton = New("TextButton", GamePage, {
-    Size = UDim2.fromOffset(100, 32),
+    if input.KeyCode == Enum.KeyCode.W
+        or input.KeyCode == Enum.KeyCode.Up then
 
-    Position = UDim2.fromOffset(0, 388),
+        SetDirection("Up")
 
-    BackgroundColor3 = Config.Panel2,
+    elseif input.KeyCode == Enum.KeyCode.S
+        or input.KeyCode == Enum.KeyCode.Down then
 
-    BorderSizePixel = 0,
+        SetDirection("Down")
 
-    Text = "← MENU",
+    elseif input.KeyCode == Enum.KeyCode.A
+        or input.KeyCode == Enum.KeyCode.Left then
 
-    TextColor3 = Config.Text,
+        SetDirection("Left")
 
-    TextSize = 11,
+    elseif input.KeyCode == Enum.KeyCode.D
+        or input.KeyCode == Enum.KeyCode.Right then
 
-    Font = Enum.Font.GothamBold,
+        SetDirection("Right")
 
-    AutoButtonColor = false,
+    elseif input.KeyCode == Enum.KeyCode.Space then
 
-    ZIndex = 30
-})
-
-Corner(BackButton, 9)
-Stroke(BackButton, Config.Accent, 1)
-
-
---========================================
--- BACK BUTTON HOVER
---========================================
-
-BackButton.MouseEnter:Connect(function()
-
-    Tween(
-        BackButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent
-        }
-    )
-
+        SetPaused(not GamePaused)
+    end
 end)
 
+--========================================
+-- TOUCH SWIPE
+--========================================
 
-BackButton.MouseLeave:Connect(function()
-
-    Tween(
-        BackButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Panel2
-        }
-    )
-
+UserInputService.TouchStarted:Connect(function(touch)
+    if GamePage.Visible then
+        TouchStart = touch.Position
+    end
 end)
 
-
---========================================
--- BACK BUTTON EVENT
---========================================
-
-BackButton.MouseButton1Click:Connect(function()
-
-    GameRunning = false
-    Running = false
-
-    GamePaused = false
-    GameOver = false
-
-    PauseOverlay.Visible = false
-    GameOverPanel.Visible = false
-
-    GamePage.Visible = false
-    Home.Visible = true
-
-end)
-
-
---========================================
--- KEYBOARD INPUT
---========================================
-
-UserInputService.InputBegan:Connect(function(
-    Input,
-    Processed
-)
-
-    if Processed then
+UserInputService.TouchEnded:Connect(function(touch)
+    if not GamePage.Visible or not TouchStart then
         return
     end
 
-    if not GameRunning then
-        return
-    end
-
-    if GamePaused then
-        return
-    end
-
-    if GameOver then
-        return
-    end
-
-    local Key = Input.KeyCode
-
-    if Key == Enum.KeyCode.W
-        or Key == Enum.KeyCode.Up then
-
-        SetDirection(
-            0,
-            -1
-        )
-
-    elseif Key == Enum.KeyCode.S
-        or Key == Enum.KeyCode.Down then
-
-        SetDirection(
-            0,
-            1
-        )
-
-    elseif Key == Enum.KeyCode.A
-        or Key == Enum.KeyCode.Left then
-
-        SetDirection(
-            -1,
-            0
-        )
-
-    elseif Key == Enum.KeyCode.D
-        or Key == Enum.KeyCode.Right then
-
-        SetDirection(
-            1,
-            0
-        )
-
-    elseif Key == Enum.KeyCode.Space then
-
-        if GamePaused then
-            SetPaused(false)
-        else
-            SetPaused(true)
-        end
-
-    end
-
-end)
-
-
---========================================
--- TOUCH SWIPE CONTROL
---========================================
-
-local TouchStart = nil
-
-UserInputService.TouchStarted:Connect(function(
-    Touch,
-    Processed
-)
-
-    if Processed then
-        return
-    end
-
-    if not GameRunning then
-        return
-    end
-
-    TouchStart = Touch.Position
-
-end)
-
-
-UserInputService.TouchEnded:Connect(function(
-    Touch,
-    Processed
-)
-
-    if Processed then
-        return
-    end
-
-    if not TouchStart then
-        return
-    end
-
-    if not GameRunning then
-        TouchStart = nil
-        return
-    end
-
-    local Delta =
-        Touch.Position - TouchStart
+    local difference =
+        touch.Position - TouchStart
 
     TouchStart = nil
 
-    if math.abs(Delta.X) < 25
-        and math.abs(Delta.Y) < 25 then
-
+    if difference.Magnitude < 25 then
         return
     end
 
-    if math.abs(Delta.X) >
-        math.abs(Delta.Y) then
-
-        if Delta.X > 0 then
-
-            SetDirection(
-                1,
-                0
-            )
-
+    if math.abs(difference.X) > math.abs(difference.Y) then
+        if difference.X > 0 then
+            SetDirection("Right")
         else
-
-            SetDirection(
-                -1,
-                0
-            )
-
+            SetDirection("Left")
         end
-
     else
-
-        if Delta.Y > 0 then
-
-            SetDirection(
-                0,
-                1
-            )
-
+        if difference.Y > 0 then
+            SetDirection("Down")
         else
-
-            SetDirection(
-                0,
-                -1
-            )
-
+            SetDirection("Up")
         end
-
     end
-
 end)
 
+--========================================
+-- BUTTON ANIMATIONS
+--========================================
+
+local function PressAnimation(button)
+    button.MouseButton1Down:Connect(function()
+        Tween(
+            button,
+            0.08,
+            {
+                Size = UDim2.fromOffset(
+                    button.Size.X.Offset - 3,
+                    button.Size.Y.Offset - 3
+                )
+            }
+        )
+    end)
+
+    button.MouseButton1Up:Connect(function()
+        Tween(
+            button,
+            0.08,
+            {
+                Size = UDim2.fromOffset(
+                    button.Size.X.Offset + 3,
+                    button.Size.Y.Offset + 3
+                )
+            }
+        )
+    end)
+end
+
+PressAnimation(UpButton)
+PressAnimation(DownButton)
+PressAnimation(LeftButton)
+PressAnimation(RightButton)
 
 --========================================
--- PAUSE BUTTON ANIMATION
+-- INITIAL RESTORE
 --========================================
 
-PauseButton.MouseEnter:Connect(function()
+if Save.Running and Save.Snake and Save.Food then
+    GameRunning = true
+    GamePaused = Save.Paused or false
 
-    Tween(
-        PauseButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent
-        }
-    )
+    StatusLabel.Text =
+        GamePaused and "PAUSED" or "RUNNING"
 
+    UpdateScore()
+    DrawSnake()
+    DrawFood()
+end
+
+--========================================
+-- END PART 2/3
+--========================================
+
+--========================================
+-- LUNAR SNAKE
+-- PART 3/3
+-- ANIMATIONS / DRAG / CLEANUP
+--========================================
+
+--========================================
+-- DRAG SYSTEM
+--========================================
+
+local Dragging = false
+local DragStart = nil
+local StartPosition = nil
+
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        Dragging = true
+        DragStart = input.Position
+        StartPosition = Holder.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                Dragging = false
+            end
+        end)
+    end
 end)
 
-
-PauseButton.MouseLeave:Connect(function()
-
-    if GamePaused then
+UserInputService.InputChanged:Connect(function(input)
+    if not Dragging then
         return
     end
 
+    if input.UserInputType ~= Enum.UserInputType.MouseMovement
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+
+    local Delta = input.Position - DragStart
+
+    Holder.Position = UDim2.new(
+        StartPosition.X.Scale,
+        StartPosition.X.Offset + Delta.X,
+        StartPosition.Y.Scale,
+        StartPosition.Y.Offset + Delta.Y
+    )
+end)
+
+--========================================
+-- TOP BAR ANIMATION
+--========================================
+
+local function TopButtonHover(button)
+    local originalSize = button.Size
+
+    button.MouseEnter:Connect(function()
+        Tween(
+            button,
+            0.15,
+            {
+                BackgroundColor3 = CONFIG.PurpleDark,
+                Size = UDim2.fromOffset(
+                    originalSize.X.Offset + 2,
+                    originalSize.Y.Offset + 2
+                )
+            }
+        )
+    end)
+
+    button.MouseLeave:Connect(function()
+        Tween(
+            button,
+            0.15,
+            {
+                BackgroundColor3 = CONFIG.Panel2,
+                Size = originalSize
+            }
+        )
+    end)
+end
+
+TopButtonHover(MinimizeButton)
+TopButtonHover(CloseButton)
+
+--========================================
+-- MINI BAR HOVER
+--========================================
+
+MiniBar.MouseEnter:Connect(function()
+    Tween(
+        MiniBar,
+        0.15,
+        {
+            BackgroundColor3 = CONFIG.Panel2
+        }
+    )
+end)
+
+MiniBar.MouseLeave:Connect(function()
+    Tween(
+        MiniBar,
+        0.15,
+        {
+            BackgroundColor3 = CONFIG.Panel
+        }
+    )
+end)
+
+--========================================
+-- PAUSE ANIMATION
+--========================================
+
+PauseButton.MouseButton1Click:Connect(function()
     Tween(
         PauseButton,
-        0.12,
+        0.08,
         {
-            BackgroundColor3 = Config.Panel2
+            Size = UDim2.fromOffset(38, 38)
         }
     )
 
+    task.delay(0.08, function()
+        if PauseButton.Parent then
+            Tween(
+                PauseButton,
+                0.12,
+                {
+                    Size = UDim2.fromOffset(42, 42)
+                }
+            )
+        end
+    end)
 end)
-
 
 --========================================
--- GAME OVER BUTTON ANIMATIONS
+-- RESUME HOVER
 --========================================
 
-RestartButton.MouseEnter:Connect(function()
-
-    Tween(
-        RestartButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent2
-        }
-    )
-
-end)
-
-
-RestartButton.MouseLeave:Connect(function()
-
-    Tween(
-        RestartButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent
-        }
-    )
-
-end)
-
-
-HomeButton.MouseEnter:Connect(function()
-
-    Tween(
-        HomeButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent
-        }
-    )
-
-end)
-
-
-HomeButton.MouseLeave:Connect(function()
-
-    Tween(
-        HomeButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Panel2
-        }
-    )
-
-end)
-
-
---========================================
--- CLOSE BUTTON ANIMATION
---========================================
-
-CloseButton.MouseEnter:Connect(function()
-
-    Tween(
-        CloseButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent
-        }
-    )
-
-end)
-
-
-CloseButton.MouseLeave:Connect(function()
-
-    Tween(
-        CloseButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Panel2
-        }
-    )
-
-end)
-
-
---========================================
--- MINIMIZE BUTTON ANIMATION
---========================================
-
-MinimizeButton.MouseEnter:Connect(function()
-
-    Tween(
-        MinimizeButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Accent
-        }
-    )
-
-end)
-
-
-MinimizeButton.MouseLeave:Connect(function()
-
-    Tween(
-        MinimizeButton,
-        0.12,
-        {
-            BackgroundColor3 = Config.Panel2
-        }
-    )
-
-end)
-
-
---========================================
--- MINI BUTTON ANIMATION
---========================================
-
-MiniButton.MouseEnter:Connect(function()
-
-    Tween(
-        MiniButton,
-        0.12,
-        {
-            Size = UDim2.fromOffset(
-                60,
-                60
-            ),
-
-            BackgroundColor3 = Config.Accent
-        }
-    )
-
-end)
-
-
-MiniButton.MouseLeave:Connect(function()
-
-    Tween(
-        MiniButton,
-        0.12,
-        {
-            Size = UDim2.fromOffset(
-                56,
-                56
-            ),
-
-            BackgroundColor3 = Config.Panel
-        }
-    )
-
-end)
-
-
---========================================
--- OPEN ANIMATION
---========================================
-
-Holder.Size = UDim2.fromOffset(
-    500,
-    410
+ButtonHover(
+    ResumeButton,
+    CONFIG.PurpleDark,
+    CONFIG.Purple
 )
 
-Holder.BackgroundTransparency = 1
+ButtonHover(
+    RestartButton,
+    CONFIG.PurpleDark,
+    CONFIG.Purple
+)
 
-task.defer(function()
+ButtonHover(
+    GameOverMenu,
+    CONFIG.Panel2,
+    CONFIG.PurpleDark
+)
+
+--========================================
+-- GAME OVER BUTTON ANIMATION
+--========================================
+
+RestartButton.MouseButton1Click:Connect(function()
+    Tween(
+        GameOverPanel,
+        0.15,
+        {
+            BackgroundTransparency = 0.35
+        }
+    )
+
+    task.delay(0.15, function()
+        if GameOverPanel.Parent then
+            GameOverPanel.BackgroundTransparency = 0
+        end
+    end)
+end)
+
+--========================================
+-- PLAY BUTTON PRESS
+--========================================
+
+PlayButton.MouseButton1Down:Connect(function()
+    Tween(
+        PlayButton,
+        0.08,
+        {
+            Size = UDim2.fromOffset(164, 40)
+        }
+    )
+end)
+
+PlayButton.MouseButton1Up:Connect(function()
+    Tween(
+        PlayButton,
+        0.1,
+        {
+            Size = UDim2.fromOffset(170, 44)
+        }
+    )
+end)
+
+--========================================
+-- MENU BUTTON PRESS
+--========================================
+
+MenuButton.MouseButton1Down:Connect(function()
+    Tween(
+        MenuButton,
+        0.08,
+        {
+            Size = UDim2.fromOffset(91, 31)
+        }
+    )
+end)
+
+MenuButton.MouseButton1Up:Connect(function()
+    Tween(
+        MenuButton,
+        0.1,
+        {
+            Size = UDim2.fromOffset(95, 34)
+        }
+    )
+end)
+
+--========================================
+-- PAUSE OVERLAY ANIMATION
+--========================================
+
+local PauseVisibleConnection
+
+PauseVisibleConnection = RunService.RenderStepped:Connect(function()
+    if not PauseOverlay.Parent then
+        PauseVisibleConnection:Disconnect()
+        return
+    end
+
+    if PauseOverlay.Visible then
+        PauseTitle.TextTransparency = 0
+        ResumeButton.TextTransparency = 0
+    end
+end)
+
+--========================================
+-- GAME PAGE ENTRY
+--========================================
+
+GamePage:GetPropertyChangedSignal("Visible"):Connect(function()
+    if GamePage.Visible then
+        GamePage.Position = UDim2.fromOffset(18, 0)
+
+        Tween(
+            GamePage,
+            0.25,
+            {
+                Position = UDim2.fromOffset(0, 0)
+            },
+            Enum.EasingStyle.Quart
+        )
+    end
+end)
+
+--========================================
+-- HOME PAGE ENTRY
+--========================================
+
+Home:GetPropertyChangedSignal("Visible"):Connect(function()
+    if Home.Visible then
+        Home.Position = UDim2.fromOffset(-18, 0)
+
+        Tween(
+            Home,
+            0.25,
+            {
+                Position = UDim2.fromOffset(0, 0)
+            },
+            Enum.EasingStyle.Quart
+        )
+    end
+end)
+
+--========================================
+-- MINIMIZE ANIMATION
+--========================================
+
+MinimizeButton.MouseButton1Click:Connect(function()
+    SaveGame()
+
+    local shrinkTween = Tween(
+        Holder,
+        0.22,
+        {
+            Size = UDim2.fromOffset(500, 410),
+            BackgroundTransparency = 0.15
+        },
+        Enum.EasingStyle.Quad
+    )
+
+    shrinkTween.Completed:Connect(function()
+        if Holder.Parent then
+            Holder.Visible = false
+            MiniBar.Visible = true
+
+            MiniBar.Size = UDim2.fromOffset(160, 40)
+
+            Tween(
+                MiniBar,
+                0.25,
+                {
+                    Size = UDim2.fromOffset(190, 46)
+                },
+                Enum.EasingStyle.Back
+            )
+        end
+    end)
+end)
+
+--========================================
+-- RESTORE ANIMATION
+--========================================
+
+MiniBar.MouseButton1Click:Connect(function()
+    SaveGame()
+
+    MiniBar.Visible = false
+    Holder.Visible = true
+
+    Holder.Size = UDim2.fromOffset(500, 410)
+    Holder.BackgroundTransparency = 0.15
 
     Tween(
         Holder,
-        0.35,
+        0.3,
         {
-            Size = UDim2.fromOffset(
-                570,
-                470
-            ),
-
+            Size = UDim2.fromOffset(570, 470),
             BackgroundTransparency = 0
-        }
+        },
+        Enum.EasingStyle.Back
     )
-
 end)
 
-
 --========================================
--- INITIAL GAME STATE
---========================================
-
-Home.Visible = true
-GamePage.Visible = false
-
-GameOverPanel.Visible = false
-PauseOverlay.Visible = false
-
-MiniButton.Visible = false
-
-GameRunning = false
-Running = false
-
-GamePaused = false
-GameOver = false
-
-
---========================================
--- SAFE CLOSE CLEANUP
+-- SAVE BEFORE GUI REMOVAL
 --========================================
 
 Gui.Destroying:Connect(function()
-
-    GameRunning = false
-    Running = false
-
-    GamePaused = true
-    Config.Runtime.Destroyed = true
-
+    SaveGame()
 end)
 
+--========================================
+-- KEEP SCORE UPDATED
+--========================================
+
+RunService.RenderStepped:Connect(function()
+    if not Gui.Parent then
+        return
+    end
+
+    if BestScore > Save.BestScore then
+        Save.BestScore = BestScore
+    end
+
+    if Score ~= Save.Score and GameRunning then
+        Save.Score = Score
+    end
+end)
 
 --========================================
--- FINAL STATUS
+-- FINAL RESTORE
 --========================================
 
-print(
-    "[Lunar Snake] Loaded successfully."
-)
+BestLabel.Text = tostring(BestScore)
+ScoreLabel.Text = "SCORE  " .. tostring(Score)
+BestGameLabel.Text = "BEST  " .. tostring(BestScore)
 
-print(
-    "[Lunar Snake] Use PLAY to start."
-)
+if GameRunning then
+    GamePage.Visible = true
+    Home.Visible = false
 
-print(
-    "[Lunar Snake] WASD / Arrow Keys / Touch Swipe enabled."
-)
+    PauseOverlay.Visible = GamePaused
 
+    StatusLabel.Text =
+        GamePaused and "PAUSED" or "RUNNING"
+else
+    GamePage.Visible = false
+    Home.Visible = true
+end
 
 --========================================
--- END OF LUNAR SNAKE
+-- FINAL OPEN ANIMATION
+--========================================
+
+task.delay(0.05, function()
+    if Holder.Parent then
+        Holder.Size = UDim2.fromOffset(520, 430)
+        Holder.BackgroundTransparency = 1
+
+        Tween(
+            Holder,
+            0.4,
+            {
+                Size = UDim2.fromOffset(570, 470),
+                BackgroundTransparency = 0
+            },
+            Enum.EasingStyle.Back
+        )
+    end
+end)
+
+--========================================
+-- LUNAR SNAKE READY
+--========================================
+
+print("Lunar Snake loaded successfully.")
+print("Best Score:", BestScore)
+print("Current Score:", Score)
+
+--========================================
+-- END PART 3/3
 --========================================
